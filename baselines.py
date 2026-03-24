@@ -72,6 +72,13 @@ class MFBPR(tf.keras.Model):
         v = tf.nn.embedding_lookup(self.item_emb, item_ids)
         return tf.linalg.matvec(v, u).numpy()
 
+    @tf.function(jit_compile=True)
+    def predict_batch(self, y_batch, user_ids):
+        """Return full-item scores for a batch of users (shape: B x I)."""
+        del y_batch  # not required for MF-style models
+        u = tf.nn.embedding_lookup(self.user_emb, user_ids)  # (B, K)
+        return tf.matmul(u, self.item_emb, transpose_b=True)  # (B, I)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. CDAE
@@ -129,6 +136,11 @@ class CDAE(tf.keras.Model):
         uid = tf.constant([user_id], dtype=tf.int32)
         scores = tf.sigmoid(self._forward(y, uid)[0])
         return tf.gather(scores, item_ids).numpy()
+
+    @tf.function(jit_compile=True)
+    def predict_batch(self, y_batch, user_ids):
+        """Return full-item probabilities for a batch of users (B x I)."""
+        return tf.sigmoid(self._forward(y_batch, user_ids))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -190,6 +202,18 @@ class NeuMF(tf.keras.Model):
         uids = tf.constant([user_id] * len(item_ids), dtype=tf.int32)
         iids = tf.constant(item_ids,                  dtype=tf.int32)
         return tf.sigmoid(self._forward(uids, iids)).numpy()
+
+    @tf.function
+    def predict_batch(self, y_batch, user_ids):
+        """Return full-item probabilities for a batch of users (B x I)."""
+        del y_batch  # not required for NeuMF
+        n_items = tf.shape(self.gmf_item)[0]
+        item_ids = tf.range(n_items, dtype=tf.int32)                   # (I,)
+        users_2d = tf.repeat(tf.expand_dims(user_ids, 1), n_items, 1)  # (B, I)
+        items_2d = tf.tile(tf.expand_dims(item_ids, 0), [tf.shape(user_ids)[0], 1])
+        logits = self._forward(tf.reshape(users_2d, [-1]),
+                               tf.reshape(items_2d, [-1]))
+        return tf.reshape(tf.sigmoid(logits), [tf.shape(user_ids)[0], n_items])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -257,3 +281,10 @@ class AMF(tf.keras.Model):
         u = self.user_emb[user_id]
         v = tf.nn.embedding_lookup(self.item_emb, item_ids)
         return tf.linalg.matvec(v, u).numpy()
+
+    @tf.function(jit_compile=True)
+    def predict_batch(self, y_batch, user_ids):
+        """Return full-item scores for a batch of users (shape: B x I)."""
+        del y_batch  # not required for MF-style models
+        u = tf.nn.embedding_lookup(self.user_emb, user_ids)  # (B, K)
+        return tf.matmul(u, self.item_emb, transpose_b=True)  # (B, I)

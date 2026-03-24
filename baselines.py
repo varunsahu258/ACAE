@@ -58,10 +58,13 @@ class MFBPR(tf.keras.Model):
 
     @tf.function(jit_compile=True)
     def train_step(self, users, pos_items, neg_items, optimiser):
+        train_vars = [self.user_emb, self.item_emb]
         with tf.GradientTape() as tape:
             loss = self.bpr_loss(users, pos_items, neg_items)
-        grads = tape.gradient(loss, self.trainable_variables)
-        optimiser.apply_gradients(zip(grads, self.trainable_variables))
+        grads = tape.gradient(loss, train_vars)
+        pairs = [(g, v) for g, v in zip(grads, train_vars) if g is not None]
+        if pairs:
+            optimiser.apply_gradients(pairs)
         return loss
 
     def predict(self, user_id, item_ids, rating_matrix=None):
@@ -112,10 +115,13 @@ class CDAE(tf.keras.Model):
 
     @tf.function(jit_compile=True)
     def train_step(self, y, user_ids, optimiser):
+        train_vars = [self.W1, self.b1, self.W2, self.b2, self.P]
         with tf.GradientTape() as tape:
             loss = self.loss_fn(y, user_ids)
-        grads = tape.gradient(loss, self.trainable_variables)
-        optimiser.apply_gradients(zip(grads, self.trainable_variables))
+        grads = tape.gradient(loss, train_vars)
+        pairs = [(g, v) for g, v in zip(grads, train_vars) if g is not None]
+        if pairs:
+            optimiser.apply_gradients(pairs)
         return loss
 
     def predict(self, user_id, item_ids, rating_matrix):
@@ -172,8 +178,13 @@ class NeuMF(tf.keras.Model):
                 tf.nn.sigmoid_cross_entropy_with_logits(
                     labels=labels, logits=logits))
             loss  += sum(self.losses)
-        grads = tape.gradient(loss, self.trainable_variables)
-        optimiser.apply_gradients(zip(grads, self.trainable_variables))
+        train_vars = ([self.gmf_user, self.gmf_item, self.mlp_user, self.mlp_item]
+                      + self.mlp_dense.trainable_variables
+                      + self.out_layer.trainable_variables)
+        grads = tape.gradient(loss, train_vars)
+        pairs = [(g, v) for g, v in zip(grads, train_vars) if g is not None]
+        if pairs:
+            optimiser.apply_gradients(pairs)
         return loss
 
     def predict(self, user_id, item_ids, rating_matrix=None):
@@ -234,10 +245,13 @@ class AMF(tf.keras.Model):
 
     @tf.function(jit_compile=True)
     def train_step(self, users, pos_items, neg_items, optimiser):
+        train_vars = [self.user_emb, self.item_emb]
         with tf.GradientTape() as tape:
             loss = self.amf_loss(users, pos_items, neg_items)
-        grads = tape.gradient(loss, self.trainable_variables)
-        optimiser.apply_gradients(zip(grads, self.trainable_variables))
+        grads = tape.gradient(loss, train_vars)
+        pairs = [(g, v) for g, v in zip(grads, train_vars) if g is not None]
+        if pairs:
+            optimiser.apply_gradients(pairs)
         return loss
 
     def predict(self, user_id, item_ids, rating_matrix=None):

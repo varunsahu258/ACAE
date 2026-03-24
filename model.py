@@ -99,10 +99,13 @@ class CAE(tf.keras.Model):
 
     @tf.function(jit_compile=True)
     def train_step(self, y, user_ids, optimiser):
+        train_vars = [self.W1, self.b1, self.W2, self.b2, self.P]
         with tf.GradientTape() as tape:
             loss = self.total_loss(y, user_ids)
-        grads = tape.gradient(loss, self.trainable_variables)
-        optimiser.apply_gradients(zip(grads, self.trainable_variables))
+        grads = tape.gradient(loss, train_vars)
+        pairs = [(g, v) for g, v in zip(grads, train_vars) if g is not None]
+        if pairs:
+            optimiser.apply_gradients(pairs)
         return loss
 
     # ── Inference ─────────────────────────────────────────────────────────────
@@ -187,8 +190,11 @@ class ACAE(CAE):
 
     @tf.function(jit_compile=True)
     def adv_train_step(self, y, user_ids, optimiser):
+        train_vars = [self.W1, self.b1, self.W2, self.b2, self.P]
         with tf.GradientTape() as param_tape:
             loss = self.acae_loss(y, user_ids)
-        grads = param_tape.gradient(loss, self.trainable_variables)
-        optimiser.apply_gradients(zip(grads, self.trainable_variables))
+        grads = param_tape.gradient(loss, train_vars)
+        pairs = [(g, v) for g, v in zip(grads, train_vars) if g is not None]
+        if pairs:
+            optimiser.apply_gradients(pairs)
         return loss

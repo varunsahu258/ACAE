@@ -58,10 +58,13 @@ class MFBPR(tf.keras.Model):
 
     @tf.function(jit_compile=True)
     def train_step(self, users, pos_items, neg_items, optimiser):
+        train_vars = [self.user_emb, self.item_emb]
         with tf.GradientTape() as tape:
             loss = self.bpr_loss(users, pos_items, neg_items)
-        grads = tape.gradient(loss, self.trainable_variables)
-        optimiser.apply_gradients(zip(grads, self.trainable_variables))
+        grads = tape.gradient(loss, train_vars)
+        pairs = [(g, v) for g, v in zip(grads, train_vars) if g is not None]
+        if pairs:
+            optimiser.apply_gradients(pairs)
         return loss
 
     def predict(self, user_id, item_ids, rating_matrix=None):
@@ -112,10 +115,13 @@ class CDAE(tf.keras.Model):
 
     @tf.function(jit_compile=True)
     def train_step(self, y, user_ids, optimiser):
+        train_vars = [self.W1, self.b1, self.W2, self.b2, self.P]
         with tf.GradientTape() as tape:
             loss = self.loss_fn(y, user_ids)
-        grads = tape.gradient(loss, self.trainable_variables)
-        optimiser.apply_gradients(zip(grads, self.trainable_variables))
+        grads = tape.gradient(loss, train_vars)
+        pairs = [(g, v) for g, v in zip(grads, train_vars) if g is not None]
+        if pairs:
+            optimiser.apply_gradients(pairs)
         return loss
 
     def predict(self, user_id, item_ids, rating_matrix):
@@ -142,11 +148,11 @@ class NeuMF(tf.keras.Model):
         self.mlp_item = tf.Variable(init([n_items, mlp_dim]),  name="mlp_i")
 
         regulariser = tf.keras.regularizers.l2(reg) if reg > 0 else None
-        self.mlp_dense = [
+        self.mlp_dense = tf.keras.Sequential([
             tf.keras.layers.Dense(d, activation="relu",
                                   kernel_regularizer=regulariser)
             for d in layers[1:]
-        ]
+        ])
         self.out_layer = tf.keras.layers.Dense(
             1, activation=None, kernel_regularizer=regulariser)
 
@@ -158,8 +164,7 @@ class NeuMF(tf.keras.Model):
         mlp = tf.concat([
             tf.nn.embedding_lookup(self.mlp_user, user_ids),
             tf.nn.embedding_lookup(self.mlp_item, item_ids)], axis=-1)
-        for layer in self.mlp_dense:
-            mlp = layer(mlp)
+        mlp = self.mlp_dense(mlp)
         return tf.squeeze(self.out_layer(tf.concat([gmf, mlp], axis=-1)), -1)
 
     # NeuMF uses dynamic input shapes (variable batch), so jit_compile may
@@ -172,8 +177,13 @@ class NeuMF(tf.keras.Model):
                 tf.nn.sigmoid_cross_entropy_with_logits(
                     labels=labels, logits=logits))
             loss  += sum(self.losses)
-        grads = tape.gradient(loss, self.trainable_variables)
-        optimiser.apply_gradients(zip(grads, self.trainable_variables))
+        train_vars = ([self.gmf_user, self.gmf_item, self.mlp_user, self.mlp_item]
+                      + self.mlp_dense.trainable_variables
+                      + self.out_layer.trainable_variables)
+        grads = tape.gradient(loss, train_vars)
+        pairs = [(g, v) for g, v in zip(grads, train_vars) if g is not None]
+        if pairs:
+            optimiser.apply_gradients(pairs)
         return loss
 
     def predict(self, user_id, item_ids, rating_matrix=None):
@@ -234,10 +244,13 @@ class AMF(tf.keras.Model):
 
     @tf.function(jit_compile=True)
     def train_step(self, users, pos_items, neg_items, optimiser):
+        train_vars = [self.user_emb, self.item_emb]
         with tf.GradientTape() as tape:
             loss = self.amf_loss(users, pos_items, neg_items)
-        grads = tape.gradient(loss, self.trainable_variables)
-        optimiser.apply_gradients(zip(grads, self.trainable_variables))
+        grads = tape.gradient(loss, train_vars)
+        pairs = [(g, v) for g, v in zip(grads, train_vars) if g is not None]
+        if pairs:
+            optimiser.apply_gradients(pairs)
         return loss
 
     def predict(self, user_id, item_ids, rating_matrix=None):
